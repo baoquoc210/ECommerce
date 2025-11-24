@@ -69,6 +69,14 @@ const userSchema = mongoose.Schema({
     signUpWithGoogle:{
         type:Boolean,
         default:false
+    },
+    password_reset_token: {
+        type: String,
+        default: ''
+    },
+    password_reset_expires: {
+        type: Date,
+        default: null
     }
 },
     { timestamps: true }

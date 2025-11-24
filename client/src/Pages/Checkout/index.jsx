@@ -146,7 +146,7 @@ const Checkout = () => {
     ).then((res) => {
       context.alertBox("success", res?.data?.message);
       history("/order/success");
-      deleteData(`/api/cart/emptyCart/${context?.userData?._id}`).then((res) => {
+      deleteData(`/api/cart/emptyCart`).then((res) => {
         context?.getCartItems();
       })
     });
@@ -211,7 +211,7 @@ const Checkout = () => {
           postData(`/api/order/create`, payLoad).then((res) => {
             context.alertBox("success", res?.message);
             if (res?.error === false) {
-              deleteData(`/api/cart/emptyCart/${user?._id}`).then((res) => {
+              deleteData(`/api/cart/emptyCart`).then((res) => {
                 context?.getCartItems();
               })
               history("/order/success");
@@ -265,7 +265,7 @@ const Checkout = () => {
         context.alertBox("success", res?.message);
 
         if (res?.error === false) {
-          deleteData(`/api/cart/emptyCart/${user?._id}`).then((res) => {
+          deleteData(`/api/cart/emptyCart`).then((res) => {
             context?.getCartItems();
             setIsloading(false);
           })

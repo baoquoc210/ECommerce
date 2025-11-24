@@ -62,7 +62,11 @@ export const addToMyListController = async (request, response) => {
 export const deleteToMyListController = async (request, response) => {
     try {
 
-        const myListItem = await MyListModel.findById(request.params.id);
+        const userId = request.userId;
+        const myListItem = await MyListModel.findOne({
+            _id: request.params.id,
+            userId: userId
+        });
 
         if(!myListItem){
             return response.status(404).json({
@@ -73,7 +77,10 @@ export const deleteToMyListController = async (request, response) => {
         }
 
 
-        const deletedItem = await MyListModel.findByIdAndDelete(request.params.id);
+        const deletedItem = await MyListModel.findOneAndDelete({
+            _id: request.params.id,
+            userId: userId
+        });
 
         if(!deletedItem){
             return response.status(404).json({

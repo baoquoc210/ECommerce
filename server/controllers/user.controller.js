@@ -1,6 +1,7 @@
-import UserModel from '../models/user.model.js'
-import bcryptjs from 'bcryptjs'
-import jwt from 'jsonwebtoken'
+import UserModel from '../models/user.model.js';
+import bcryptjs from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import sendEmailFun from '../config/sendEmail.js';
 import VerificationEmail from '../utils/verifyEmailTemplate.js';
 import generatedAccessToken from '../utils/generatedAccessToken.js';
@@ -52,7 +53,7 @@ export async function registerUserController(request, response) {
             password: hashPassword,
             name: name,
             otp: verifyCode,
-            otpExpires: Date.now() + 600000,
+            otpExpires: new Date(Date.now() + 600000),
 
         });
 
@@ -139,7 +140,7 @@ export async function authWithGoogle(request, response) {
                 email: email,
                 password: "null",
                 avatar: avatar,
-                role: role,
+                role: 'USER',
                 verify_email: true,
                 signUpWithGoogle: true
             });
@@ -428,12 +429,16 @@ export async function removeImageFromCloudinary(request, response) {
 export async function updateUserDetails(request, response) {
     try {
         const userId = request.userId //auth middleware
-        const { name, email, mobile, password } = request.body;
+        const { name, email, mobile } = request.body;
 
         const userExist = await UserModel.findById(userId);
-        if (!userExist)
-            return response.status(400).send('The user cannot be Updated!');
-
+        if (!userExist) {
+            return response.status(400).json({
+                message: 'The user cannot be Updated!',
+                error: true,
+                success: false,
+            });
+        }
 
         const updateUser = await UserModel.findByIdAndUpdate(
             userId,
@@ -443,9 +448,7 @@ export async function updateUserDetails(request, response) {
                 email: email,
             },
             { new: true }
-        )
-
-
+        ).select('-password -refresh_token');
 
         return response.json({
             message: "User Updated successfully",
@@ -488,7 +491,7 @@ export async function forgotPasswordController(request, response) {
             let verifyCode = Math.floor(100000 + Math.random() * 900000).toString();
 
             user.otp = verifyCode;
-            user.otpExpires = Date.now() + 600000;
+            user.otpExpires = new Date(Date.now() + 600000);
 
             await user.save();
 
@@ -553,9 +556,7 @@ export async function verifyForgotPasswordOtp(request, response) {
         }
 
 
-        const currentTime = new Date().toISOString()
-
-        if (user.otpExpires < currentTime) {
+        if (user.otpExpires < Date.now()) {
             return response.status(400).json({
                 message: "Otp is expired",
                 error: true,
@@ -563,7 +564,11 @@ export async function verifyForgotPasswordOtp(request, response) {
             })
         }
 
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
 
+        user.password_reset_token = resetTokenHash;
+        user.password_reset_expires = new Date(Date.now() + 15 * 60 * 1000);
         user.otp = "";
         user.otpExpires = "";
 
@@ -572,7 +577,8 @@ export async function verifyForgotPasswordOtp(request, response) {
         return response.status(200).json({
             message: "Verify OTP successfully",
             error: false,
-            success: true
+            success: true,
+            resetToken
         })
     } catch (error) {
         return response.status(500).json({
@@ -588,34 +594,32 @@ export async function verifyForgotPasswordOtp(request, response) {
 //reset password
 export async function resetpassword(request, response) {
     try {
-        const { email, oldPassword, newPassword, confirmPassword } = request.body;
-        if (!email || !newPassword || !confirmPassword) {
+        const userId = request.userId;
+        const { oldPassword, newPassword, confirmPassword } = request.body;
+        if (!oldPassword || !newPassword || !confirmPassword) {
             return response.status(400).json({
                 error: true,
                 success: false,
-                message: "provide required fields email, newPassword, confirmPassword"
+                message: "provide required fields oldPassword, newPassword, confirmPassword"
             })
         }
 
-        const user = await UserModel.findOne({ email });
+        const user = await UserModel.findById(userId);
         if (!user) {
             return response.status(400).json({
-                message: "Email is not available",
+                message: "User not found",
                 error: true,
                 success: false
             })
         }
 
-
-        if (user?.signUpWithGoogle === false) {
-            const checkPassword = await bcryptjs.compare(oldPassword, user.password);
-            if (!checkPassword) {
-                return response.status(400).json({
-                    message: "your old password is wrong",
-                    error: true,
-                    success: false,
-                })
-            }
+        const checkPassword = await bcryptjs.compare(oldPassword, user.password);
+        if (!checkPassword) {
+            return response.status(400).json({
+                message: "your old password is wrong",
+                error: true,
+                success: false,
+            })
         }
 
 
@@ -652,15 +656,16 @@ export async function resetpassword(request, response) {
 
 
 
-//change password
+//change password - forgot-password flow using reset token
 export async function changePasswordController(request, response) {
     try {
-        const { email, newPassword, confirmPassword } = request.body;
-        if (!email || !newPassword || !confirmPassword) {
+        const { email, newPassword, confirmPassword, resetToken } = request.body;
+
+        if (!email || !newPassword || !confirmPassword || !resetToken) {
             return response.status(400).json({
                 error: true,
                 success: false,
-                message: "provide required fields email, newPassword, confirmPassword"
+                message: "provide required fields email, newPassword, confirmPassword, resetToken"
             })
         }
 
@@ -673,6 +678,18 @@ export async function changePasswordController(request, response) {
             })
         }
 
+        const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+        if (!user.password_reset_token ||
+            user.password_reset_token !== resetTokenHash ||
+            !user.password_reset_expires ||
+            user.password_reset_expires < Date.now()) {
+            return response.status(400).json({
+                message: "Reset token is invalid or expired",
+                error: true,
+                success: false
+            })
+        }
 
         if (newPassword !== confirmPassword) {
             return response.status(400).json({
@@ -687,6 +704,8 @@ export async function changePasswordController(request, response) {
 
         user.password = hashPassword;
         user.signUpWithGoogle = false;
+        user.password_reset_token = '';
+        user.password_reset_expires = null;
         await user.save();
 
         return response.json({
@@ -709,9 +728,9 @@ export async function changePasswordController(request, response) {
 //refresh token controler
 export async function refreshToken(request, response) {
     try {
-        const refreshToken = request.cookies.refreshToken || request?.headers?.authorization?.split(" ")[1]  /// [ Bearer token]
+        const incomingRefreshToken = request.cookies.refreshToken || request?.headers?.authorization?.split(" ")[1];  /// [ Bearer token]
 
-        if (!refreshToken) {
+        if (!incomingRefreshToken) {
             return response.status(401).json({
                 message: "Invalid token",
                 error: true,
@@ -720,7 +739,7 @@ export async function refreshToken(request, response) {
         }
 
 
-        const verifyToken = await jwt.verify(refreshToken, process.env.SECRET_KEY_REFRESH_TOKEN)
+        const verifyToken = await jwt.verify(incomingRefreshToken, process.env.SECRET_KEY_REFRESH_TOKEN)
         if (!verifyToken) {
             return response.status(401).json({
                 message: "token is expired",
@@ -729,7 +748,17 @@ export async function refreshToken(request, response) {
             })
         }
 
-        const userId = verifyToken?._id;
+        const user = await UserModel.findById(verifyToken.id);
+
+        if (!user || user.refresh_token !== incomingRefreshToken) {
+            return response.status(401).json({
+                message: "Refresh token is not valid",
+                error: true,
+                success: false
+            })
+        }
+
+        const userId = verifyToken?.id;
         const newAccessToken = await generatedAccessToken(userId)
 
         const cookiesOption = {
@@ -786,7 +815,8 @@ export async function userDetails(request, response) {
 export async function addReview(request, response) {
     try {
 
-        const {image, userName, review, rating, userId, productId} = request.body;
+        const userId = request.userId;
+        const {image, userName, review, rating, productId} = request.body;
 
         const userReview = new ReviewModel({
             image:image,
@@ -884,11 +914,15 @@ export async function getAllUsers(request, response) {
     try {
         const { page, limit } = request.query;
 
-        const totalUsers = await UserModel.find();
+        const totalUsers = await UserModel.countDocuments();
 
-        const users = await UserModel.find().sort({ createdAt: -1 }).skip((page - 1) * limit).limit(parseInt(limit));
+        const users = await UserModel.find()
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit))
+            .select('-password -refresh_token -otp');
 
-        const total = await UserModel.countDocuments(users);
+        const total = totalUsers;
 
         if(!users){
             return response.status(400).json({
@@ -904,8 +938,7 @@ export async function getAllUsers(request, response) {
             total: total,
             page: parseInt(page),
             totalPages: Math.ceil(total / limit),
-            totalUsersCount:totalUsers?.length,
-            totalUsers:totalUsers
+            totalUsersCount: totalUsers
         })
         
     } catch (error) {

@@ -43,6 +43,9 @@ const VerifyAccount = () => {
         }).then((res) => {
           if (res?.error === false) {
             context.alertBox("success", res?.message);
+            if (res?.resetToken) {
+              localStorage.setItem("passwordResetToken", res.resetToken);
+            }
             localStorage.removeItem("actionType"); // Clear actionType
             history("/change-password");
           } else {

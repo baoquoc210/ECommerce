@@ -2,6 +2,7 @@ import BlogModel from '../models/blog.model.js';
 
 import { v2 as cloudinary } from 'cloudinary';
 import fs from 'fs';
+import DOMPurify from 'isomorphic-dompurify';
 
 
 cloudinary.config({
@@ -57,10 +58,11 @@ export async function uploadImages(request, response) {
 //add blog
 export async function addBlog(request, response) {
     try {
+        const sanitizedDescription = DOMPurify.sanitize(request.body.description || '');
         let blog = new BlogModel({
             title: request.body.title,
             images: imagesArr,
-            description: request.body.description,
+            description: sanitizedDescription,
         });
 
         if (!blog) {
@@ -213,11 +215,12 @@ export async function deleteBlog(request, response) {
 
 
 export async function updateBlog(request, response) {
+    const sanitizedDescription = DOMPurify.sanitize(request.body.description || '');
     const blog = await BlogModel.findByIdAndUpdate(
         request.params.id,
         {
             title: request.body.title,
-            description: request.body.description,
+            description: sanitizedDescription,
             images: imagesArr.length > 0 ? imagesArr[0] : request.body.images,
         },
         { new: true }

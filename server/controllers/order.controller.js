@@ -7,9 +7,10 @@ import sendEmailFun from "../config/sendEmail.js";
 
 export const createOrderController = async (request, response) => {
     try {
+        const userId = request.userId;
 
         let order = new OrderModel({
-            userId: request.body.userId,
+            userId: userId,
             products: request.body.products,
             paymentId: request.body.paymentId,
             payment_status: request.body.payment_status,
@@ -42,7 +43,7 @@ export const createOrderController = async (request, response) => {
             );
         }
 
-        const user = await UserModel.findOne({ _id: request.body.userId })
+        const user = await UserModel.findOne({ _id: userId })
 
         const recipients = [];
         recipients.push(user?.email);
@@ -76,8 +77,6 @@ export const createOrderController = async (request, response) => {
 
 export async function getOrderDetailsController(request, response) {
     try {
-        const userId = request.userId // order id
-
         const { page, limit } = request.query;
 
         const orderlist = await OrderModel.find().sort({ createdAt: -1 }).populate('delivery_address userId').skip((page - 1) * limit).limit(parseInt(limit));
@@ -104,7 +103,7 @@ export async function getOrderDetailsController(request, response) {
 
 export async function getUserOrderDetailsController(request, response) {
     try {
-        const userId = request.userId // order id
+        const userId = request.userId;
 
         const { page, limit } = request.query;
 
@@ -192,10 +191,14 @@ export const createOrderPaypalController = async (request, response) => {
         try {
             const client = getPayPalClient();
             const order = await client.execute(req);
-            response.json({ id: order.result.id });
+            return response.json({ id: order.result.id });
         } catch (error) {
             console.error(error);
-            response.status(500).send("Error creating PayPal order");
+            return response.status(500).json({
+                message: "Error creating PayPal order",
+                error: true,
+                success: false
+            });
         }
 
     } catch (error) {
@@ -212,13 +215,25 @@ export const createOrderPaypalController = async (request, response) => {
 
 export const captureOrderPaypalController = async (request, response) => {
     try {
+        const userId = request.userId;
         const { paymentId } = request.body;
 
         const req = new paypal.orders.OrdersCaptureRequest(paymentId);
         req.requestBody({});
 
+        const client = getPayPalClient();
+        const capture = await client.execute(req);
+
+        if (!capture || capture.result.status !== 'COMPLETED') {
+            return response.status(400).json({
+                message: 'Payment not completed',
+                error: true,
+                success: false
+            });
+        }
+
         const orderInfo = {
-            userId: request.body.userId,
+            userId: userId,
             products: request.body.products,
             paymentId: request.body.paymentId,
             payment_status: request.body.payment_status,
@@ -230,7 +245,7 @@ export const captureOrderPaypalController = async (request, response) => {
         const order = new OrderModel(orderInfo);
         await order.save();
 
-        const user = await UserModel.findOne({ _id: request.body.userId })
+        const user = await UserModel.findOne({ _id: userId })
 
         const recipients = [];
         recipients.push(user?.email);

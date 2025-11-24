@@ -4,7 +4,8 @@ import UserModel from "../models/user.model.js";
 export const addAddressController = async (request, response) => {
 
     try {
-        const { address_line1, city, state, pincode, country, mobile, userId, landmark, addressType } = request.body;
+        const userId = request.userId;
+        const { address_line1, city, state, pincode, country, mobile, landmark, addressType } = request.body;
 
 
         // if (!address_line1 || city || state || pincode || country || mobile || userId) {
@@ -17,12 +18,20 @@ export const addAddressController = async (request, response) => {
 
 
         const address = new AddressModel({
-            address_line1, city, state, pincode, country, mobile, userId, landmark, addressType
+            address_line1,
+            city,
+            state,
+            pincode,
+            country,
+            mobile,
+            userId,
+            landmark,
+            addressType
         })
 
         const savedAddress = await address.save();
 
-        const updateCartUser = await UserModel.updateOne({ _id: userId }, {
+        await UserModel.updateOne({ _id: userId }, {
             $push: {
                 address_details: savedAddress?._id
             }
@@ -52,7 +61,8 @@ export const addAddressController = async (request, response) => {
 
 export const getAddressController = async (request, response) => {
     try {
-        const address = await AddressModel.find({ userId: request?.query?.userId });
+        const userId = request.userId;
+        const address = await AddressModel.find({ userId });
 
         if (!address) {
             return response.status({
@@ -62,14 +72,7 @@ export const getAddressController = async (request, response) => {
             })
         }
 
-        else {
-
-            const updateUser = await UserModel.updateOne({ _id: request?.query?.userId }, {
-                $push: {
-                    address: address?._id
-                }
-            })
-            
+        else {            
             return response.status(200).json({
                 error: false,
                 success: true,
@@ -132,9 +135,10 @@ export const deleteAddressController = async (request, response) => {
 
 export const getSingleAddressController = async (request, response) => {
         try {
+            const userId = request.userId;
             const id = request.params.id;
 
-              const address = await AddressModel.findOne({_id:id}) ;
+              const address = await AddressModel.findOne({_id:id, userId:userId}) ;
 
               if(!address){
                 return response.status(404).json({
@@ -167,13 +171,14 @@ export const getSingleAddressController = async (request, response) => {
 export async function editAddress(request, response) {
     try {
 
+        const userId = request.userId;
         const id  = request.params.id;
 
-        const { address_line1, city, state, pincode, country, mobile, userId, landmark, addressType } = request.body;
+        const { address_line1, city, state, pincode, country, mobile, landmark, addressType } = request.body;
 
 
-        const address = await AddressModel.findByIdAndUpdate(
-            id,
+        const address = await AddressModel.findOneAndUpdate(
+            { _id: id, userId: userId },
             {
                 address_line1: address_line1,
                 city: city,
@@ -186,6 +191,14 @@ export async function editAddress(request, response) {
             },
             { new: true }
         )
+
+        if (!address) {
+            return response.status(404).json({
+                message: "Address not found",
+                error: true,
+                success: false
+            })
+        }
 
         return response.json({
             message: "Address Updated successfully",

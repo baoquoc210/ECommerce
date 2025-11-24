@@ -42,6 +42,9 @@ const Verify = () => {
       }).then((res) => {
         if (res?.error === false) {
           context.alertBox("success", res?.message);
+          if (res?.resetToken) {
+            localStorage.setItem("passwordResetToken", res.resetToken);
+          }
           history("/forgot-password")
         } else {
           context.alertBox("error", res?.message);
