@@ -74,7 +74,7 @@ const OrderConfirmationEmail = (username, orders) => {
                 <td>${product?.quantity}</td>
                         <td>${product?.subTotal?.toLocaleString("en-US", {
             style: "currency",
-            currency: "INR",
+            currency: "AUD",
         })}</td>
         </tr>
                     `
